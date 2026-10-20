@@ -133,8 +133,8 @@ def web_meta():
                    for ginfo in book.values() for u in ginfo.get("units", []))
     n_units = sum(len(ginfo.get("units", [])) for book in DATA.EDITIONS.values()
                   for ginfo in book.values())
-    return {"editions": editions, "tiers": tiers,
-            "stats": {"units": n_units, "themes": n_themes}}
+    return json.dumps({"editions": editions, "tiers": tiers,
+            "stats": {"units": n_units, "themes": n_themes}}, ensure_ascii=False)
 
 def web_generate(params_json):
     d = json.loads(params_json)
@@ -195,29 +195,32 @@ async function loadPyodideWithFallback(log){
   throw new Error("三个引擎源都连不上");
 }
 
+// 进度提示统一写进顶部 #stats（不再依赖已删除的 #boot 元素）
+function setMsg(html){
+  const el = $("stats");
+  if(el) el.textContent = html.replace(/<[^>]+>/g, " ").trim();
+}
+
 async function boot(){
-  const bootBox = $("boot");
   try{
-    pyodide = await loadPyodideWithFallback(
-      m => { bootBox.textContent = m; });
+    pyodide = await loadPyodideWithFallback(setMsg);
     for(const f of PY_FILES){
       const code = await (await fetch("py/" + f)).text();
       pyodide.FS.writeFile("/home/pyodide/" + f, code);
     }
-    bootBox.textContent = "正在装载素材库（97 题材 / 133 主线）…";
+    setMsg("正在装载素材库（97 题材 / 133 主线）…");
     const glue = $("pyglue-src").textContent;
     await pyodide.runPythonAsync(glue);
     const meta = pyodide.globals.get("web_meta")();
     META = JSON.parse(meta);
-    bootBox.remove();
     $("panel").style.opacity = "1";
     $("panel").style.pointerEvents = "auto";
     $("gen").disabled = false; $("gen").textContent = "✍ 生成一篇";
     $("stats").textContent = `全版本 · ${META.stats.units} 板块 ${META.stats.themes} 题材 · 浏览器本地生成`;
     initUI();
   }catch(e){
-    bootBox.innerHTML = "引擎加载失败：" + e.message +
-      "<br>请 ① 刷新重试（Ctrl+F5 强制刷新） ② 换手机热点试试 ③ 稍后再来。";
+    setMsg("引擎加载失败：" + e.message +
+      " ｜ 请 ① 刷新重试（Ctrl+F5 强制刷新） ② 换手机热点试试 ③ 稍后再来。");
   }
 }
 
