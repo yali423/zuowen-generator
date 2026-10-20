@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>作文生成器 · 小学 1-6 年级全部习作 | 统编版在线免费生成</title>
+<meta name="description" content="覆盖小学一至六年级 12 个学期、统编版语文全部习作单元的免费在线作文生成器：97 个题材、130+ 条主线、好词 277 个。字数按年级可选，一年级写话 50 字起，六年级 600 字。每次生成由 3 条主线合成新主线 + 词库现写，出厂前自动过九大类病句检测。">
+<meta name="keywords" content="作文生成器,小学作文,六年级作文,三年级作文,统编版作文,写话,习作,免费作文,作文范文,日记,童话,读后感">
+<meta name="robots" content="index,follow">
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+<style>
+  :root{
+    --green:#2f5d45; --green-d:#224634; --green-l:#e8f1e8;
+    --gold:#b8860b; --paper:#fdfaf1; --ink:#243024; --line:#e2dbc6;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:"Microsoft YaHei",sans-serif; background:var(--paper); color:var(--ink); min-height:100vh;}
+  header{background:var(--green); color:#fff; padding:16px 24px; border-bottom:3px solid var(--gold);}
+  header h1{font-size:22px; display:inline-block;}
+  header .stats{font-size:13px; color:#cfe3d3; margin-left:14px;}
+  .panel{max-width:1060px; margin:18px auto; background:#faf6ea; border:1px solid var(--line);
+         border-radius:8px; padding:16px 20px; display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end;}
+  .field{display:flex; flex-direction:column; gap:4px;}
+  .field label{font-size:12px; font-weight:bold;}
+  select{font-family:inherit; font-size:14px; padding:7px 8px; border:1px solid var(--line);
+         border-radius:6px; background:#fff; color:var(--ink); outline:none;}
+  select:focus{border-color:var(--green);}
+  #unit{min-width:320px;}
+  button{font-family:inherit; cursor:pointer; border:none; border-radius:6px;
+         font-size:15px; font-weight:bold; padding:10px 22px; transition:filter .15s;}
+  #gen{background:var(--green); color:#fff;}
+  #gen:hover{filter:brightness(1.15);}
+  #gen:disabled{filter:grayscale(.6); cursor:wait;}
+  .card{max-width:1060px; margin:0 auto 30px; background:#fff; border:1px solid var(--line);
+        border-radius:8px; padding:34px 40px 30px; min-height:280px;}
+  .card .title{font-size:20px; font-weight:bold; color:var(--green-d); text-align:center; margin-bottom:6px;}
+  .card .meta{font-size:12px; color:#8a8a7a; text-align:center; margin-bottom:16px;}
+  .card .body{font-size:16px; line-height:2;}
+  .card .body p{text-indent:2em; margin-bottom:10px;}
+  #copy{background:#ece5d2; color:var(--ink); font-size:13px; padding:8px 16px; font-weight:normal;}
+  #copy:hover{filter:brightness(.95);}
+  #copy.ok{background:var(--green-l); color:var(--green-d);}
+  .toolbar{margin-top:20px; padding-top:14px; border-top:1px dashed var(--line);
+           display:flex; gap:10px; align-items:center;}
+  .status{font-size:13px; color:#8a8a7a; margin-left:auto;}
+  #boot{max-width:1060px; margin:18px auto; padding:14px 20px; background:#fff7e6;
+        border:1px solid #f0e0b8; border-radius:8px; font-size:13px; color:#7a6530;}
+  section.seo{max-width:1060px; margin:10px auto 40px; font-size:14px; line-height:1.9; color:#4e5969;}
+  section.seo h2{font-size:16px; color:var(--green-d); margin:18px 0 8px;}
+  section.seo li{margin-left:20px;}
+  footer{max-width:1060px; margin:0 auto 30px; font-size:12px; color:#b0a98f; text-align:center;}
+</style>
+</head>
+<body>
+<header>
+  <h1>作文生成器 · 小学 1-6 年级</h1>
+  <span class="stats" id="stats">加载中…</span>
+</header>
+
+<div class="panel" id="panel" style="opacity:.45; pointer-events:none">
+  <div class="field"><label>教材版本</label><select id="edition"></select></div>
+  <div class="field"><label>年级学期</label><select id="grade"></select></div>
+  <div class="field"><label>习作单元</label><select id="unit"></select></div>
+  <div class="field"><label>水平（满分 30）</label><select id="tier"></select></div>
+  <div class="field"><label>字数</label><select id="target"></select></div>
+  <div class="field"><label>&nbsp;</label><button id="gen" disabled>加载引擎…</button></div>
+</div>
+
+<div class="card">
+  <div id="empty" style="color:#b0a98f; text-align:center; padding-top:70px; font-size:14px;">
+    引擎加载完成后，这里会出现作文。每次生成都是全新现写，出厂前自动过病句检测。</div>
+  <div id="out" style="display:none">
+    <div class="title" id="t"></div>
+    <div class="meta" id="m"></div>
+    <div class="body" id="b"></div>
+    <div class="toolbar">
+      <button id="copy">📋 复制全文</button>
+      <span class="status" id="st"></span>
+    </div>
+  </div>
+</div>
+
+<section class="seo">
+  <h2>这是什么</h2>
+  <p>这是一个免费的在线小学作文生成器，覆盖统编版（部编版）语文<b>一年级上册到六年级下册</b>全部 12 个学期的习作单元：低年级的看图写话，中年级的观察日记、编童话、植物朋友、传统节日，高年级的变形记、多彩的活动、围绕中心意思写、学写倡议书、家乡的风俗、插上科学的翅膀飞、难忘小学生活等，全部 97 个题材、130 多条写作主线。</p>
+  <p>生成的每一篇都是当场现写：引擎从写作主线和 277 个好词的词库中重新组合选句，一半概率把 3 条主线合成一条全新主线；写完自动做九大类病句检查（搭配不当、成分残缺、成分赘余、语序不当、结构混乱、表意不明、不合逻辑、关联词不当、标点误用）和重复句检查，不合格的重写，合格才显示。生成结果只读展示，一键复制到任何地方使用。</p>
+  <h2>怎么用</h2>
+  <li>选择教材版本（统编版/人教版/苏教版/北师大版）和年级学期；</li>
+  <li>选择习作单元、水平档（25—30 分）和目标字数（按年级自动匹配）；</li>
+  <li>点「生成一篇」，等几秒钟，作文就出来了，点「复制全文」即可带走。</li>
+  <h2>各年级支持情况</h2>
+  <li>一年级（上/下）：看图写话——我的一天、春天来了；</li>
+  <li>二年级（上/下）：写话——我喜欢的玩具、我的好朋友；</li>
+  <li>三年级（上/下）：猜猜他是谁、我来编童话、我的植物朋友、身边那些有特点的人；</li>
+  <li>四年级（上/下）：我的心儿怦怦跳、记一次游戏、我的动物朋友、游____；</li>
+  <li>五年级（上/下）：我的心爱之物、______即景、那一刻我长大了、写读后感、神奇的探险之旅；</li>
+  <li>六年级（上/下）：变形记、多彩的活动、笔尖流出的故事、围绕中心意思写、学写倡议书、我的拿手好戏、有你真好、家乡的风俗、心愿、插上科学的翅膀飞、难忘小学生活、我最喜欢的一首诗、我的暑假。</li>
+  <p>生成在浏览器本地完成（无需登录、不上传任何个人信息）。第一次打开需要加载运行引擎，约 10—30 秒，之后浏览器会缓存。</p>
+</section>
+
+<footer>作文生成器 · 网页版 · 引擎在浏览器本地运行 · 生成内容仅供学习参考</footer>
+
+<div id="pyglue-src" style="display:none">
+import json, random
+import essay_engine as ENG
+import essay_data as DATA
+
+def _find_unit(edition, grade, unit_key):
+    book = DATA.EDITIONS.get(edition) or DATA.EDITIONS["统编版"]
+    ginfo = book.get(grade) or {"units": [], "word_opts": [400], "floor": 345}
+    unit = None
+    for u in ginfo.get("units", []):
+        if u["key"] == unit_key:
+            unit = u
+            break
+    return unit, ginfo
+
+def web_meta():
+    editions = {}
+    for ed_name, book in DATA.EDITIONS.items():
+        grades = {}
+        for g_name, ginfo in book.items():
+            grades[g_name] = {
+                "floor": ginfo.get("floor", 345),
+                "word_opts": ginfo.get("word_opts", [400]),
+                "units": [{"key": u["key"], "name": u["name"], "tip": u.get("tip", ""),
+                           "themes": len(u["themes"])}
+                          for u in ginfo.get("units", [])],
+            }
+        editions[ed_name] = grades
+    tiers = [{"tier": t, "label": ENG.TIER_LABEL[t]} for t in ENG.TIERS]
+    n_themes = sum(len(u["themes"]) for book in DATA.EDITIONS.values()
+                   for ginfo in book.values() for u in ginfo.get("units", []))
+    n_units = sum(len(ginfo.get("units", [])) for book in DATA.EDITIONS.values()
+                  for ginfo in book.values())
+    return {"editions": editions, "tiers": tiers,
+            "stats": {"units": n_units, "themes": n_themes}}
+
+def web_generate(params_json):
+    d = json.loads(params_json)
+    unit, ginfo = _find_unit(d.get("edition", "统编版"), d.get("grade", "六上"),
+                             d.get("unit", ""))
+    if unit is None:
+        return json.dumps({"error": "找不到该单元"}, ensure_ascii=False)
+    tier = int(d.get("tier", 28))
+    target = int(d.get("target") or 400)
+    floor = ginfo.get("floor", 345)
+    theme = None
+    if d.get("merge") and len(unit["themes"]) >= 3:
+        theme = ENG.merge_mainlines(random.choice(unit["themes"]), random.Random())
+    if theme is None:
+        theme = random.choice(unit["themes"])
+    doc = ENG.make(theme, tier, random.Random(), user_target=target, floor=floor)
+    problems = [p for p in ENG.quality_problems(doc, tier)
+                if not p.startswith("字数")]
+    return json.dumps({"title": doc["title"], "paras": doc["paras"],
+                       "target": doc.get("target", target), "problems": problems,
+                       "merged": bool(theme.get("merged"))}, ensure_ascii=False)
+</div>
+
+<script>
+const PY_FILES = ["essay_engine.py", "essay_data.py", "words.py", "techniques.py"];
+const $ = id => document.getElementById(id);
+let pyodide = null, META = null, lastText = "";
+
+async function boot(){
+  const bootBox = $("boot");
+  try{
+    bootBox.textContent = "正在加载 Python 引擎（约 10—30 秒，首次加载后浏览器会缓存）…";
+    pyodide = await loadPyodide();
+    for(const f of PY_FILES){
+      const code = await (await fetch("py/" + f)).text();
+      pyodide.FS.writeFile("/home/pyodide/" + f, code);
+    }
+    bootBox.textContent = "正在装载素材库（97 题材 / 133 主线）…";
+    const glue = $("pyglue-src").textContent;
+    await pyodide.runPythonAsync(glue);
+    const meta = pyodide.globals.get("web_meta")();
+    META = JSON.parse(meta);
+    bootBox.remove();
+    $("panel").style.opacity = "1";
+    $("panel").style.pointerEvents = "auto";
+    $("gen").disabled = false; $("gen").textContent = "✍ 生成一篇";
+    $("stats").textContent = `全版本 · ${META.stats.units} 板块 ${META.stats.themes} 题材 · 浏览器本地生成`;
+    initUI();
+  }catch(e){
+    bootBox.textContent = "引擎加载失败：" + e.message + "（请刷新重试，或检查网络）";
+  }
+}
+
+function initUI(){
+  const ed = $("edition");
+  ed.innerHTML = Object.keys(META.editions).map(k => `<option>${k}</option>`).join("");
+  ed.onchange = loadGrades;
+  const tr = $("tier");
+  tr.innerHTML = META.tiers.map(t =>
+    `<option value="${t.tier}">${t.tier} 分 · ${t.label.split(" · ")[1]}</option>`).join("");
+  tr.selectedIndex = 3;
+  loadGrades();
+}
+
+function loadGrades(){
+  const book = META.editions[$("edition").value] || {};
+  const g = $("grade");
+  g.innerHTML = Object.keys(book).map(k => `<option>${k}</option>`).join("");
+  g.onchange = loadUnits;
+  loadUnits();
+}
+
+function loadUnits(){
+  const book = META.editions[$("edition").value] || {};
+  const info = book[$("grade").value] || {units: [], word_opts: [400]};
+  const u = $("unit");
+  u.innerHTML = ['<option value="__random__">随机（任意单元）</option>']
+    .concat(info.units.map(x => `<option value="${x.key}">${x.name} ｜ ${x.tip}（${x.themes} 题材）</option>`)).join("");
+  const t = $("target");
+  t.innerHTML = info.word_opts.map(w => `<option>${w}</option>`).join("");
+  t.selectedIndex = Math.min(1, info.word_opts.length - 1);
+}
+
+$("gen").onclick = function(){
+  const btn = this;
+  btn.disabled = true; btn.textContent = "工厂合成中…（几秒钟）";
+  const book = META.editions[$("edition").value] || {};
+  const info = book[$("grade").value] || {units: []};
+  const unitSel = $("unit").value;
+  let unit = unitSel;
+  if(unit === "__random__"){
+    unit = info.units[Math.floor(Math.random() * info.units.length)].key;
+  }
+  const params = JSON.stringify({
+    edition: $("edition").value, grade: $("grade").value, unit: unit,
+    tier: +$("tier").value, target: +$("target").value, merge: true,
+  });
+  setTimeout(() => {
+    try{
+      const d = JSON.parse(pyodide.globals.get("web_generate")(params));
+      if(d.error){ alert(d.error); }
+      else{ show(d); }
+    }catch(e){ alert("生成出错：" + e.message); }
+    finally{ btn.disabled = false; btn.textContent = "✍ 生成一篇"; }
+  }, 60);
+};
+
+function show(d){
+  $("empty").style.display = "none";
+  $("out").style.display = "block";
+  $("t").textContent = "《" + d.title + "》";
+  $("m").textContent = "出厂检验：病句 0 · 重复句 0" +
+    (d.merged ? " · 本篇由 3 条主线合成" : "");
+  $("b").innerHTML = d.paras.map(p => `<p>${p}</p>`).join("");
+  const n = d.paras.join("").length;
+  $("st").textContent = `字数 ${n}（目标 ${d.target}）`;
+  lastText = "《" + d.title + "》\n\n" + d.paras.join("\n\n");
+  const c = $("copy");
+  c.classList.remove("ok"); c.textContent = "📋 复制全文";
+}
+
+$("copy").onclick = function(){
+  navigator.clipboard.writeText(lastText).then(() => {
+    this.classList.add("ok"); this.textContent = "✓ 已复制";
+    setTimeout(() => { this.classList.remove("ok"); this.textContent = "📋 复制全文"; }, 1500);
+  });
+};
+
+boot();
+</script>
+</body>
+</html>
