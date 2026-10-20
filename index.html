@@ -7,7 +7,7 @@
 <meta name="description" content="覆盖小学一至六年级 12 个学期、统编版语文全部习作单元的免费在线作文生成器：97 个题材、130+ 条主线、好词 277 个。字数按年级可选，一年级写话 50 字起，六年级 600 字。每次生成由 3 条主线合成新主线 + 词库现写，出厂前自动过九大类病句检测。">
 <meta name="keywords" content="作文生成器,小学作文,六年级作文,三年级作文,统编版作文,写话,习作,免费作文,作文范文,日记,童话,读后感">
 <meta name="robots" content="index,follow">
-<script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+<!-- pyodide.js 由 JS 动态加载（国内镜像优先 + 海外兜底），不再写死单一 CDN -->
 <style>
   :root{
     --green:#2f5d45; --green-d:#224634; --green-l:#e8f1e8;
@@ -163,11 +163,43 @@ const PY_FILES = ["essay_engine.py", "essay_data.py", "words.py", "techniques.py
 const $ = id => document.getElementById(id);
 let pyodide = null, META = null, lastText = "";
 
+// 引擎加载源：国内镜像优先，海外 CDN 兜底（哪个先连通用哪个）
+const PYODIDE_SOURCES = [
+  { name: "国内镜像", indexURL: "https://registry.npmmirror.com/pyodide/0.26.2/files/" },
+  { name: "海外 CDN", indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/" },
+  { name: "备用 CDN", indexURL: "https://unpkg.com/pyodide@0.26.2/" },
+];
+
+function loadScript(url){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = url;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("script " + url));
+    document.head.appendChild(s);
+    // 12 秒没动静视为该源不通
+    setTimeout(() => reject(new Error("timeout " + url)), 12000);
+  });
+}
+
+async function loadPyodideWithFallback(log){
+  for(const src of PYODIDE_SOURCES){
+    try{
+      log("正在连接引擎源（" + src.name + "）…");
+      await loadScript(src.indexURL + "pyodide.js");
+      log("已连接 " + src.name + "，正在下载 Python 引擎（约 12MB，首次较慢）…");
+      const py = await loadPyodide({ indexURL: src.indexURL });
+      return py;
+    }catch(e){ /* 换下一个源 */ }
+  }
+  throw new Error("三个引擎源都连不上");
+}
+
 async function boot(){
   const bootBox = $("boot");
   try{
-    bootBox.textContent = "正在加载 Python 引擎（约 10—30 秒，首次加载后浏览器会缓存）…";
-    pyodide = await loadPyodide();
+    pyodide = await loadPyodideWithFallback(
+      m => { bootBox.textContent = m; });
     for(const f of PY_FILES){
       const code = await (await fetch("py/" + f)).text();
       pyodide.FS.writeFile("/home/pyodide/" + f, code);
@@ -184,7 +216,8 @@ async function boot(){
     $("stats").textContent = `全版本 · ${META.stats.units} 板块 ${META.stats.themes} 题材 · 浏览器本地生成`;
     initUI();
   }catch(e){
-    bootBox.textContent = "引擎加载失败：" + e.message + "（请刷新重试，或检查网络）";
+    bootBox.innerHTML = "引擎加载失败：" + e.message +
+      "<br>请 ① 刷新重试（Ctrl+F5 强制刷新） ② 换手机热点试试 ③ 稍后再来。";
   }
 }
 
