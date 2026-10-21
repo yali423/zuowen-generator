@@ -69,10 +69,35 @@
 <div class="card">
   <div id="empty" style="color:#b0a98f; text-align:center; padding-top:70px; font-size:14px;">
     引擎加载完成后，这里会出现作文。每次生成都是全新现写，出厂前自动过病句检测。</div>
-  <div id="out" style="display:none">
+  <div id="tmodal" style="display:none; position:fixed; inset:0; background:rgba(20,30,22,.45); z-index:99;" onclick="if(event.target===this)this.style.display='none'">
+  <div style="width:560px; max-width:92vw; height:480px; margin:8vh auto 0; background:#fffdf4; border:1px solid #c9c2ae; border-radius:6px; display:flex; flex-direction:column; box-shadow:0 12px 40px rgba(0,0,0,.25);">
+    <div style="padding:16px 20px 0; display:flex; align-items:baseline; justify-content:center; gap:10px;">
+      <span id="tm_name" style="font-size:20px; font-weight:700; color:#243024;"></span>
+      <span id="tm_kind" style="font-size:12px; color:#b8902e;"></span>
+    </div>
+    <div style="flex:1; overflow-y:auto; margin:10px 18px 0; background:#fffdf4; border:1px solid #d8d2c0; padding:14px 18px; text-align:center;">
+      <div id="tm_sec1_h" style="font-size:12px; font-weight:700; color:#2f6b3a; margin:6px 0 8px;">好在哪</div>
+      <div id="tm_why" style="font-size:15px; line-height:1.9; color:#243024;"></div>
+      <div id="tm_sec2" style="display:none;">
+        <div style="font-size:12px; font-weight:700; color:#2f6b3a; margin:16px 0 8px;">怎么用</div>
+        <div id="tm_eg" style="font-family:'KaiTi','楷体',serif; font-size:17px; line-height:1.9; color:#243024; white-space:pre-wrap;"></div>
+      </div>
+      <div id="tm_sec3" style="display:none;">
+        <div style="font-size:12px; font-weight:700; color:#2f6b3a; margin:16px 0 8px;">这篇里的句子</div>
+        <div id="tm_hit" style="font-family:'KaiTi','楷体',serif; font-size:17px; line-height:1.9; color:#5a5240;"></div>
+      </div>
+    </div>
+    <div style="padding:10px 18px 14px; text-align:right;">
+      <button onclick="document.getElementById('tmodal').style.display='none'"
+              style="border:0; background:#ece5d2; color:#243024; border-radius:4px; padding:6px 18px; cursor:pointer; font-size:13px;">关闭</button>
+    </div>
+  </div>
+</div>
+<div id="out" style="display:none">
     <div class="title" id="t"></div>
     <div class="meta" id="m"></div>
     <div class="body" id="b"></div>
+    <div id="techs" style="display:none; margin-top:14px; font-size:14px; color:#4a5b4e;"></div>
     <div class="toolbar">
       <button id="copy">📋 复制全文</button>
       <span class="status" id="st"></span>
@@ -117,9 +142,14 @@ def _find_unit(edition, grade, unit_key):
 
 def web_meta():
     editions = {}
+    notes = {}
     for ed_name, book in DATA.EDITIONS.items():
+        # 空骨架版本（人教/苏教/北师大）：回落统编版排布，并给前端一句提示
+        src = book if book else DATA.EDITIONS["统编版"]
+        if not book:
+            notes[ed_name] = "该版本单元排布暂按统编版整理（各版本单元主题基本一致）"
         grades = {}
-        for g_name, ginfo in book.items():
+        for g_name, ginfo in src.items():
             grades[g_name] = {
                 "floor": ginfo.get("floor", 345),
                 "word_opts": ginfo.get("word_opts", [400]),
@@ -133,7 +163,7 @@ def web_meta():
                    for ginfo in book.values() for u in ginfo.get("units", []))
     n_units = sum(len(ginfo.get("units", [])) for book in DATA.EDITIONS.values()
                   for ginfo in book.values())
-    return json.dumps({"editions": editions, "tiers": tiers,
+    return json.dumps({"editions": editions, "tiers": tiers, "notes": notes,
             "stats": {"units": n_units, "themes": n_themes}}, ensure_ascii=False)
 
 def web_generate(params_json):
@@ -153,15 +183,33 @@ def web_generate(params_json):
     doc = ENG.make(theme, tier, random.Random(), user_target=target, floor=floor)
     problems = [p for p in ENG.quality_problems(doc, tier)
                 if not p.startswith("字数")]
+    techs = doc.get("techs") or {}
+    keys = [k for k, v in (techs.get("skeleton") or {}).items() if v]
+    keys += list(techs.get("fixed") or []) + list(techs.get("landed") or [])
+    _text = "\n".join(doc["paras"])
+    infos = {}
+    for _k in keys:
+        try:
+            infos[_k] = __import__("techniques").info(_k)
+        except Exception:
+            pass
+    examples = {}
+    for _k in infos:
+        try:
+            examples[_k] = __import__("techniques").find_example(_text, _k)
+        except Exception:
+            examples[_k] = ""
     return json.dumps({"title": doc["title"], "paras": doc["paras"],
                        "target": doc.get("target", target), "problems": problems,
-                       "merged": bool(theme.get("merged"))}, ensure_ascii=False)
+                       "merged": bool(theme.get("merged")),
+                       "tech_keys": keys, "tech_infos": infos,
+                       "tech_examples": examples}, ensure_ascii=False)
 </div>
 
 <script>
 const PY_FILES = ["essay_engine.py", "essay_data.py", "words.py", "techniques.py"];
 const $ = id => document.getElementById(id);
-let pyodide = null, META = null, lastText = "";
+let pyodide = null, META = null, lastText = "", CUR = {};
 
 // 引擎加载源：国内镜像优先，海外 CDN 兜底（哪个先连通用哪个）
 const PYODIDE_SOURCES = [
@@ -204,8 +252,18 @@ function setMsg(html){
 async function boot(){
   try{
     pyodide = await loadPyodideWithFallback(setMsg);
+    // 引擎文件两种摆放都兼容：根目录（GitHub 网页上传会扁平化）优先，py/ 子目录兜底
+    const fetchPy = async (f) => {
+      for(const prefix of ["", "py/"]){
+        try{
+          const r = await fetch(prefix + f);
+          if(r.ok){ const t = await r.text(); if(t.length > 200) return t; }
+        }catch(e){ /* 换下一个位置 */ }
+      }
+      throw new Error("加载失败：" + f);
+    };
     for(const f of PY_FILES){
-      const code = await (await fetch("py/" + f)).text();
+      const code = await fetchPy(f);
       pyodide.FS.writeFile("/home/pyodide/" + f, code);
     }
     setMsg("正在装载素材库（97 题材 / 133 主线）…");
@@ -237,6 +295,8 @@ function initUI(){
 
 function loadGrades(){
   const book = META.editions[$("edition").value] || {};
+  const note = (META.notes || {})[$("edition").value];
+  if (note) $("stats").textContent = note + "（选别的版本可切回）";
   const g = $("grade");
   g.innerHTML = Object.keys(book).map(k => `<option>${k}</option>`).join("");
   g.onchange = loadUnits;
@@ -279,6 +339,7 @@ $("gen").onclick = function(){
 };
 
 function show(d){
+  CUR = d;
   $("empty").style.display = "none";
   $("out").style.display = "block";
   $("t").textContent = "《" + d.title + "》";
@@ -287,9 +348,34 @@ function show(d){
   $("b").innerHTML = d.paras.map(p => `<p>${p}</p>`).join("");
   const n = d.paras.join("").length;
   $("st").textContent = `字数 ${n}（目标 ${d.target}）`;
+  // 写作手法条：点名字看讲解
+  const tw = $("techs");
+  const keys = d.tech_keys || [];
+  if (keys.length) {
+    tw.style.display = "block";
+    tw.innerHTML = "✍ 这篇用到的写作手法（点名字看讲解）：" +
+      keys.map(k => `<span data-k="${k}" onclick="open_tech(this.dataset.k)"
+        style="display:inline-block; margin:3px 6px 3px 0; padding:3px 12px; background:#e7f0e6; border:1px solid #bcd4bc; border-radius:999px; cursor:pointer; color:#2f6b3a;">${k}</span>`).join("");
+  } else {
+    tw.style.display = "none";
+  }
   lastText = "《" + d.title + "》\n\n" + d.paras.join("\n\n");
   const c = $("copy");
   c.classList.remove("ok"); c.textContent = "📋 复制全文";
+}
+
+function open_tech(k){
+  const info = (CUR.tech_infos || {})[k] || {};
+  $("tm_name").textContent = k;
+  $("tm_kind").textContent = info.kind || "";
+  $("tm_why").textContent = info.why || "这篇里用到了这个手法。";
+  const eg = info.eg || "";
+  $("tm_sec2").style.display = eg ? "block" : "none";
+  $("tm_eg").textContent = eg;
+  const ex = (CUR.tech_examples || {})[k];
+  $("tm_sec3").style.display = ex ? "block" : "none";
+  $("tm_hit").textContent = ex ? "「" + ex + "」" : "";
+  $("tmodal").style.display = "block";
 }
 
 $("copy").onclick = function(){

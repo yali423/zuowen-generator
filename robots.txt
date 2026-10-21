@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://yali423.github.io/zuowen-generator/sitemap.xml
