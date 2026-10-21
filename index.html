@@ -147,7 +147,9 @@ def web_meta():
         # 空骨架版本（人教/苏教/北师大）：回落统编版排布，并给前端一句提示
         src = book if book else DATA.EDITIONS["统编版"]
         if not book:
-            notes[ed_name] = "该版本单元排布暂按统编版整理（各版本单元主题基本一致）"
+            notes[ed_name] = "该版本暂无独立目录，按统编版排布"
+        elif ed_name == "人教版":
+            notes[ed_name] = "现行人教版即部编（统编）版，单元排布一致"
         grades = {}
         for g_name, ginfo in src.items():
             grades[g_name] = {
@@ -159,8 +161,10 @@ def web_meta():
             }
         editions[ed_name] = grades
     tiers = [{"tier": t, "label": ENG.TIER_LABEL[t]} for t in ENG.TIERS]
-    n_themes = sum(len(u["themes"]) for book in DATA.EDITIONS.values()
-                   for ginfo in book.values() for u in ginfo.get("units", []))
+    _uniq = {id(th) for book in DATA.EDITIONS.values()
+             for ginfo in book.values() for u in ginfo.get("units", [])
+             for th in u["themes"]}
+    n_themes = len(_uniq)      # 各版本共享同一批素材，按对象去重计数
     n_units = sum(len(ginfo.get("units", [])) for book in DATA.EDITIONS.values()
                   for ginfo in book.values())
     return json.dumps({"editions": editions, "tiers": tiers, "notes": notes,
