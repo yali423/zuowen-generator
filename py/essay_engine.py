@@ -59,7 +59,7 @@ def char_count(text):
     return len(re.sub(r"\s", "", text))
 
 
-def pick(slot, tier, rng):
+def pick(slot, tier, rng, target=None):
     """从槽位里按分档取一句：只用 min_tier <= 目标档的候选，优先取最高档的 2 条再随机"""
     cands = [c for c in slot if c[0] <= tier]
     if not cands:
@@ -67,7 +67,9 @@ def pick(slot, tier, rng):
     # 高分档不许降级用低档句：28 分以上只用"接近本档"的句子。
     # 否则 30 分的文章里会冒出"我跑过去，用力跳了一下"这种三年级口吻
     # （低档句命中技巧时权重会压过高档句，必须在这里拦住）。
-    if tier >= 28:
+    if tier >= 28 and (target is None or target > 220):
+        # 高分档不许降级用低档句——但仅限中长文。小目标（写话 50—200 字）
+        # 只用本档长句必然超长，此时短句反而是正确的选择。
         hi = [c for c in cands if c[0] >= tier - 1]
         if hi:
             cands = hi
@@ -503,7 +505,11 @@ def assemble(theme, tier, rng, must_keys=(), no_cap=False, user_target=None, flo
             _c = [c for c in slot if c[0] <= tier] or slot
             main_max += max(char_count(c[1]) for c in _c)
     extra_sum = sum(char_count(e[-1]) for e in theme.get("extra", []) if e[0] <= tier)
-    _pool_cap = int(main_max * 0.9) + extra_sum
+    # 折扣只对"多选槽"必要：槽里只有一个可用句时 main_max 是精确值，
+    # 打折反而会把写话类小池子砍得过低（曾把二上 100 字档砍到 119 目标）
+    _multi = sum(1 for _p in paras_spec for _slot in _p
+                 if len([_c for _c in _slot if _c[0] <= tier]) > 1)
+    _pool_cap = int(main_max * (0.82 if _multi else 1.0)) + extra_sum
     if user_target and _pool_cap < user_target:
         # floor 是理想下限，但素材实在撑不到时只能让位——交短一点的实文
         target = max(60, min(floor or MIN_CHARS, _pool_cap - 15))
@@ -522,7 +528,7 @@ def assemble(theme, tier, rng, must_keys=(), no_cap=False, user_target=None, flo
             _idxs = sorted(rng.sample(_idxs, slot_cap))
         for si in _idxs:
             slot = p_spec[si]
-            s = pick(slot, tier, rng)
+            s = pick(slot, tier, rng, target=target)
             if not s or s in seen:
                 continue
             # 段内语义去重："今天也像往常一样，我在林子里飞"和
@@ -537,7 +543,7 @@ def assemble(theme, tier, rng, must_keys=(), no_cap=False, user_target=None, flo
             sents.append(s)
         if not sents and p_spec and p_spec[0]:
             # 去重去空了（整段两槽说的是同一件事）：至少留一句，别留空段
-            s = pick(p_spec[0], tier, rng) or p_spec[0][0][1]
+            s = pick(p_spec[0], tier, rng, target=target) or p_spec[0][0][1]
             if s not in seen:
                 seen.add(s)
                 sents.append(s)
@@ -715,11 +721,11 @@ def quality_problems(doc, tier):
     problems = []
     n = char_count(doc["text"])
     tgt = doc.get("target") or TARGET.get(tier, 400)
-    if n < tgt - 28:
+    if n < int(tgt * 0.9):   # 下限按目标 90%：高档素材经查重/润色有正常损耗
         # 下限放得比上限松：素材撑不到高字数档时，483/500 这种
         # "略少 20 字"的实文，好过硬凑出来的水话
         problems.append("字数不足 %d" % n)
-    elif n > tgt + 20:
+    elif n > tgt + max(20, int(tgt * 0.35)):   # 小目标句子颗粒度粗，上限按比例放宽
         problems.append("字数超出 %d" % n)
     # 病句检测（九大类）
     for gk, gtip, gfrag in grammar_check(doc["text"]):
